@@ -12,6 +12,9 @@ import {
   endOfWeek,
   endOfYear,
   isWithinInterval,
+  isValid,
+  format,
+  parse,
   startOfDay,
   startOfMonth,
   startOfToday,
@@ -19,14 +22,14 @@ import {
   startOfYear,
 } from 'date-fns/esm';
 import { UnsubscribeFunc } from 'home-assistant-js-websocket';
-import { html, LitElement, nothing } from 'lit';
+import { html, LitElement, nothing, PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators';
 import { firstWeekdayIndex } from './datetime/first-weekday';
 import { formatDate, formatDateMonthYear, formatDateShort, formatDateYear } from './datetime/format-date';
 import { toggleAttribute, ToggleButton } from './types';
 import { computeRTLDirection } from './utils/compute_rtl';
-import { EnergyData, getEnergyDataCollection } from './energy';
-import { SubscribeMixin } from './energy/subscribe-mixin';
+import { EnergyDataLike, EnergyCollectionLike, findEnergyCollection } from './energy-collection';
+import { SubscribeMixin } from './subscribe-mixin';
 import { HomeAssistant } from './type/home-assistant';
 import { EnergyPeriodSelectorPlusConfig } from './energy-period-selector-plus-config';
 import type { DateRangePickerRanges } from './datetime';
@@ -43,28 +46,84 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
   @state() private _period?: 'day' | 'week' | 'month' | 'year' | 'custom';
   @state() private _compare = false;
 
-  public connectedCallback() {
-    super.connectedCallback();
-  }
-
-  public disconnectedCallback() {
-    super.disconnectedCallback();
-  }
+  private _collection?: EnergyCollectionLike;
+  private _energyData?: EnergyDataLike;
+  private _retryTimer?: ReturnType<typeof setTimeout>;
+  private _subscriptionGeneration = 0;
+  private _subscribedConnection?: HomeAssistant['connection'];
+  private _subscribedKey?: string;
 
   async firstUpdated() {
-    (await (window as any).loadCardHelpers()).importMoreInfoControl('input_datetime'); // This is needed to render the datepicker!!!
+    try {
+      if (typeof (window as any).loadCardHelpers === 'function') {
+        const helpers = await (window as any).loadCardHelpers();
+        await helpers?.importMoreInfoControl?.('input_datetime');
+      }
+    } catch {
+      // Some HA versions do not expose these optional helpers.
+    }
+    if (!customElements.get('ha-button')) {
+      void customElements.whenDefined('ha-button').then(() => this.requestUpdate());
+    }
+  }
+
+  protected updated(changedProps: PropertyValues) {
+    super.updated(changedProps);
+    if (
+      this.isConnected &&
+      (changedProps.has('hass') || changedProps.has('collectionKey')) &&
+      (this._collection !== findEnergyCollection(this.hass, this.collectionKey) ||
+        this._subscribedConnection !== this.hass?.connection ||
+        this._subscribedKey !== this.collectionKey)
+    ) {
+      this.resetSubscriptions();
+    }
+  }
+
+  protected hassUnsubscribe() {
+    ++this._subscriptionGeneration;
+    clearTimeout(this._retryTimer);
+    this._retryTimer = undefined;
+    this._collection = undefined;
+    this._energyData = undefined;
+    this._startDate = undefined;
+    this._endDate = undefined;
+    this._period = undefined;
+    super.hassUnsubscribe();
   }
 
   public hassSubscribe(): UnsubscribeFunc[] {
+    const collection = findEnergyCollection(this.hass, this.collectionKey);
+    this._subscribedConnection = this.hass.connection;
+    this._subscribedKey = this.collectionKey;
+    this._collection = collection;
+    if (!collection) {
+      this._retryTimer = setTimeout(() => {
+        this._retryTimer = undefined;
+        if (this.isConnected) this.resetSubscriptions();
+      }, 1000);
+      return [];
+    }
+    const generation = this._subscriptionGeneration;
+    const connection = this.hass.connection;
+    const key = this.collectionKey;
     return [
-      getEnergyDataCollection(this.hass, {
-        key: this.collectionKey,
-      }).subscribe(data => this._updateDates(data)),
+      collection.subscribe(data => {
+        if (
+          this.isConnected &&
+          generation === this._subscriptionGeneration &&
+          connection === this.hass.connection &&
+          key === this.collectionKey &&
+          collection === findEnergyCollection(this.hass, this.collectionKey)
+        ) {
+          this._updateDates(data);
+        }
+      }),
     ];
   }
 
   protected render() {
-    if (!this.hass || !this._startDate) {
+    if (!this.hass || !findEnergyCollection(this.hass, this.collectionKey) || !this._startDate) {
       return nothing;
     }
 
@@ -105,30 +164,33 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
       <div class="date-range-container">
         <ha-date-input
           .locale=${this.hass.locale}
-          .value=${this._startDate?.toISOString() || ''}
+          .value=${format(this._startDate, 'yyyy-MM-dd')}
           .label=${this.hass.localize('ui.components.date-range-picker.start_date')}
           @value-changed=${this._startDateChanged}
           .required=${true}
           .min=${'2019-01-01'}
-          .max=${this._endDate?.toISOString() || endOfToday().toISOString()}
+          .max=${format(endOfToday(), 'yyyy-MM-dd')}
         >
         </ha-date-input>
         <ha-date-input
           .locale=${this.hass.locale}
-          .value=${this._endDate?.toISOString() || ''}
+          .value=${this._endDate ? format(this._endDate, 'yyyy-MM-dd') : ''}
           .label=${this.hass.localize('ui.components.date-range-picker.end_date')}
           @value-changed=${this._endDateChanged}
           .required=${true}
-          .min=${this._startDate.toISOString()}
-          .max=${endOfToday().toISOString()}
+          .min=${format(this._startDate, 'yyyy-MM-dd')}
+          .max=${format(endOfToday(), 'yyyy-MM-dd')}
         >
         </ha-date-input>
       </div>
     `;
 
-    const todayButtonText = html` <mwc-button dense outlined @click=${this._pickToday}>
-      ${this.hass.localize('ui.panel.lovelace.components.energy_period_selector.today')}
-    </mwc-button>`;
+    const renderButton = (label: string, handler: () => void, className = '') =>
+      customElements.get('ha-button')
+        ? html`<ha-button appearance="outlined" size="small" class=${className} @click=${handler}>${label}</ha-button>`
+        : html`<mwc-button dense outlined class=${className} @click=${handler}>${label}</mwc-button>`;
+
+    const todayButtonText = renderButton(this.hass.localize('ui.panel.lovelace.components.energy_period_selector.today'), this._pickToday);
 
     const todayButtonIcon = html` <ha-icon-button
       @click=${this._pickToday}
@@ -188,23 +250,31 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
                 ${this._config.compare_button_label ?? this.hass.localize('ui.panel.lovelace.components.energy_period_selector.compare')}
               </ha-icon-button>`
             : this._config?.compare_button_type === 'text'
-            ? html`<mwc-button class="compare ${this._compare ? 'active' : ''}" @click=${this._toggleCompare} dense outlined>
-                ${this._config.compare_button_label ?? this.hass.localize('ui.panel.lovelace.components.energy_period_selector.compare')}
-              </mwc-button>`
+            ? renderButton(
+                this._config.compare_button_label ?? this.hass.localize('ui.panel.lovelace.components.energy_period_selector.compare'),
+                this._toggleCompare,
+                `compare ${this._compare ? 'active' : ''}`,
+              )
             : nothing}
         </div>
       </div>
     `;
   }
 
+  private _parseDate(value: unknown): Date | undefined {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+    const date = parse(value, 'yyyy-MM-dd', new Date());
+    return isValid(date) && format(date, 'yyyy-MM-dd') === value ? date : undefined;
+  }
+
   public _startDateChanged(ev: CustomEvent): void {
-    this._setDate(new Date(ev.detail.value));
+    const date = this._parseDate(ev.detail?.value);
+    if (date) this._setDate(date, this._endDate && this._endDate >= date ? this._endDate : date);
   }
 
   public _endDateChanged(ev: CustomEvent): void {
-    if (this._startDate && new Date(ev.detail.value) > this._startDate) {
-      this._setDate(this._startDate, new Date(ev.detail.value));
-    }
+    const date = this._parseDate(ev.detail?.value);
+    if (date && this._startDate) this._setDate(this._startDate, date < this._startDate ? this._startDate : date);
   }
 
   private _handleView(ev: CustomEvent): void {
@@ -293,13 +363,17 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
         ? endOfDay(customEndDate)
         : this._endDate || endOfToday();
 
-    const energyCollection = getEnergyDataCollection(this.hass);
-    energyCollection.setPeriod(startDate, endDate);
+    const energyCollection = findEnergyCollection(this.hass, this.collectionKey);
+    if (!energyCollection) return;
+    energyCollection.setPeriod(startDate, endDate < startDate ? endOfDay(startDate) : endDate);
     energyCollection.refresh();
   }
 
-  private _updateDates(energyData: EnergyData): void {
-    this._compare = energyData.startCompare !== undefined;
+  private _updateDates(energyData: EnergyDataLike): void {
+    if (!isValid(energyData.start) || (energyData.end !== undefined && !isValid(energyData.end))) return;
+    if (energyData.end && energyData.end < energyData.start) return;
+    this._energyData = energyData;
+    this._compare = energyData.compareMode ? true : energyData.startCompare !== undefined;
     this._startDate = energyData.start;
     this._endDate = energyData.end || endOfToday();
     const dayDifference = differenceInDays(this._endDate, this._startDate || endOfToday());
@@ -318,9 +392,12 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
   }
 
   private _toggleCompare() {
-    this._compare = !this._compare;
-    const energyCollection = getEnergyDataCollection(this.hass);
-    energyCollection.setCompare(this._compare);
+    const energyCollection = findEnergyCollection(this.hass, this.collectionKey);
+    if (!energyCollection || !this._energyData) return;
+    const next = !this._compare;
+    // Optimistic, so a second click before the refresh finishes toggles back; the next collection update corrects it.
+    this._compare = next;
+    energyCollection.setCompare('compareMode' in this._energyData ? (next ? this._config?.compare_mode ?? 'previous' : '') : next);
     energyCollection.refresh();
   }
 

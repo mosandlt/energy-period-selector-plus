@@ -1,3 +1,5 @@
+export const CARD_VERSION = '0.3.0';
+
 import { EntityConfig } from "./types";
 
 export const UNIT_PREFIXES = {

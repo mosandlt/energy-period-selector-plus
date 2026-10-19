@@ -47,6 +47,7 @@ export const stylesBase = css`
     gap: 1rem;
     margin-left: 12px;
   }
+  ha-button,
   mwc-button {
     margin-left: 8px;
   }
@@ -55,6 +56,7 @@ export const stylesBase = css`
     --mdc-icon-size: 20px;
   }
   ha-icon-button.active::before,
+  ha-button.active::before,
   mwc-button.active::before {
     top: 0;
     left: 0;
@@ -89,6 +91,7 @@ export const stylesBase = css`
   ha-button-toggle-group {
     direction: var(--direction);
   }
+  ha-button,
   mwc-button {
     flex-shrink: 0;
   }

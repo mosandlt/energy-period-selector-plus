@@ -43,21 +43,23 @@ export default [
       inlineDynamicImports: true,
     },
     plugins: [
-      minifyHTML(),
-      terser({ output: { comments: false } }),
       typescript({
         declaration: false,
+        include: ['**/*.ts'],
+        check: false,
+        tsconfigOverride: { compilerOptions: { noEmit: false } },
       }),
       nodeResolve(),
       json({
         compact: true,
       }),
       commonjs(),
+      minifyHTML(),
       babel({
-        exclude: "node_modules/**",
-        babelHelpers: "bundled",
+        exclude: 'node_modules/**',
+        babelHelpers: 'bundled',
       }),
-      ...(dev ? [serve(serveOptions)] : [terser()]),
+      ...(dev ? [serve(serveopts)] : [terser({ output: { comments: false } })]),
     ],
     moduleContext: (id) => {
       const thisAsWindowForModules = [

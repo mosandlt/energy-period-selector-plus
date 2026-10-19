@@ -4,6 +4,7 @@ import { EnergyCardBaseConfig } from './type/energy-card-base-config';
 export interface EnergyPeriodSelectorPlusConfig extends LovelaceCardConfig, EnergyCardBaseConfig {
   card_background?: boolean;
   prev_next_buttons?: boolean;
+  compare_mode?: 'previous' | 'yoy';
   compare_button_type?: string;
   compare_button_label?: string;
   today_button_type?: string | boolean;

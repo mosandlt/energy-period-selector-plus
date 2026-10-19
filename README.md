@@ -66,7 +66,11 @@ Else, if you prefer the graphical editor, use the menu to add the resource:
    
 ## Using the card
 
-To configure this card, only the type is required, making it very easy to get started.
+To configure this card, only the type is required. Place it alongside a standard Home Assistant energy card on the same dashboard page. The standard card creates the shared Energy collection; this card only uses an existing collection and remains hidden until one is available.
+
+Use `compare_mode: previous` (default) or `compare_mode: yoy` to compare with the previous period or previous year. Older HA versions retain their boolean comparison behavior. Set `compare_button_type: text` or `icon` to show the comparison button.
+
+For a named collection, set the same `collection_key` on this card and the standard energy card. It must begin with `energy_`. The lookup checks that key first, then the dashboard collection (`_energy_${hass.panelUrl}`), then the legacy `_energy` collection.
 
 
 In addition to that, I developed a UI Editor, making it even easier to change the card according to your preferences. 🥳
@@ -89,6 +93,8 @@ The UI Editor looks like this:
 | today_button_type        | `boolean`  | true | If set to `true`, a button will be added to select today. |
 | prev_next_buttons   | `boolean`  | true | If set to `true`, buttons will be added to control the previous and next period. |
 | compare_button_type      | `string`  | undefined | If set, a button will be added to toggle the compare mode. Supported values are `icon` and `text`. |
+| compare_mode | `string` | `previous` | Comparison mode: `previous` or `yoy`. |
+| collection_key | `string` | undefined | Shared collection key, beginning with `energy_`. |
 | period_buttons | `array` | undefined | If set, only buttons inside this array will be displayed. Supported values are `day`, `week`, `month`, `year` and `custom`. Order of your array will be applied. |
 | custom_period_label | `string` | undefined | If set, the label of the custom period button will be changed to this value. Otherwise will be synced to your HA language (If not, consider submitting a PR, adding your language to the localize function.) |
 

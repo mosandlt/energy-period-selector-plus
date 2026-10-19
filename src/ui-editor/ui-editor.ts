@@ -5,7 +5,7 @@ import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { fireEvent, HomeAssistant, LovelaceCardEditor } from 'custom-card-helpers';
 import { EnergyCardBaseConfig } from '../type/energy-card-base-config';
-import { any, assert, assign, boolean, integer, number, object, optional, string } from 'superstruct';
+import { any, assert, assign, boolean, enums, integer, number, object, optional, string } from 'superstruct';
 import { localize } from '../localize/localize';
 import memoizeOne from 'memoize-one';
 import { EnergyPeriodSelectorPlusConfig } from '../energy-period-selector-plus-config';
@@ -35,10 +35,13 @@ export class EnergyPeriodSelectorEditor extends LitElement implements LovelaceCa
           view_layout: optional(string()),
         }),
         object({
+          title: optional(string()),
           card_background: optional(boolean()),
           today_button: optional(boolean()),
           prev_next_buttons: optional(boolean()),
           compare_button_type: optional(string()),
+          compare_mode: optional(enums(['previous', 'yoy'])),
+          collection_key: optional(string()),
           today_button_type: optional(any()),
           period_buttons: optional(any()),
           custom_period_label: optional(string()),
@@ -46,6 +49,9 @@ export class EnergyPeriodSelectorEditor extends LitElement implements LovelaceCa
         }),
       ),
     );
+    if (config.collection_key !== undefined && !config.collection_key.startsWith('energy_')) {
+      throw new Error('collection_key must start with "energy_".');
+    }
     this._config = config;
   }
 
@@ -57,6 +63,19 @@ export class EnergyPeriodSelectorEditor extends LitElement implements LovelaceCa
   private _schema = memoizeOne(
     (showCompareLabel, showCustomPeriodLabel) =>
       [
+        { name: 'collection_key', selector: { text: {} } },
+        {
+          name: 'compare_mode',
+          selector: {
+            select: {
+              options: [
+                { value: 'previous', label: 'Previous period' },
+                { value: 'yoy', label: 'Previous year' },
+              ],
+              mode: 'dropdown',
+            },
+          },
+        },
         {
           type: 'grid',
           name: '',
@@ -150,6 +169,7 @@ export class EnergyPeriodSelectorEditor extends LitElement implements LovelaceCa
       today_button: this._config.today_button ?? true,
       prev_next_buttons: this._config.prev_next_buttons ?? true,
       compare_button_type: this._config.compare_button_type ?? '',
+      compare_mode: this._config.compare_mode ?? 'previous',
       today_button_type: this._config.today_button_type ?? 'text',
       period_buttons: this._config.period_buttons ?? ['day', 'week', 'month', 'year'],
     };
@@ -167,11 +187,14 @@ export class EnergyPeriodSelectorEditor extends LitElement implements LovelaceCa
   }
 
   private _valueChanged(ev: CustomEvent): void {
-    const config = ev?.detail.value;
+    const config = { ...ev.detail.value };
+    if (config.collection_key === '') delete config.collection_key;
     fireEvent(this, 'config-changed', { config });
   }
 
   private _computeLabelCallback = schema => {
+    if (schema.name === 'collection_key') return 'Collection key (energy_…)';
+    if (schema.name === 'compare_mode') return 'Compare mode';
     return localize(`editor.fields.${schema.name}`) || `not found: ${schema.name}`;
   };
 
