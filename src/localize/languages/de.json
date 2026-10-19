@@ -8,7 +8,8 @@
   "loading": "Laden..."
   },
   "toggleButtons": {
-  "custom": "Benutzerdefiniert"
+  "custom": "Benutzerdefiniert",
+  "billing": "Abrechnung"
   },
   "editor": {
   "yaml_disclaimer": "Bitte verwenden Sie den YAML-Modus für die anderen Optionen",
@@ -23,6 +24,11 @@
   "card_background": "Kartenhintergrund",
   "prev_next_buttons": "Vorherige/Nächste Schaltflächen anzeigen",
   "compare_button_type": "Vergleichstyp der Schaltfläche",
+  "default_period": "Standardzeitraum",
+  "billing_cycle_day": "Starttag des Abrechnungszeitraums",
+  "billing_period_label": "Beschriftung des Abrechnungszeitraums",
+  "start_date_entity": "Entität für das Startdatum",
+  "end_date_entity": "Entität für das Enddatum",
   "custom_period_label": "Benutzerdefiniertes Zeitraster-Label",
   "compare_button_options": {
   "icon": "Symbol",
@@ -36,7 +42,8 @@
   "week": "Woche",
   "month": "Monat",
   "year": "Jahr",
-  "custom": "Benutzerdefiniert"
+  "custom": "Benutzerdefiniert",
+  "billing": "Abrechnung"
   }
   },
   "entity_types": {

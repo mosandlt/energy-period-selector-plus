@@ -8,7 +8,8 @@
         "loading": "Cargando..."
     },
     "toggleButtons": {
-        "custom": "Personalizado"
+        "custom": "Personalizado",
+        "billing": "Facturación"
     },
     "editor": {
         "yaml_disclaimer": "Por favor, utiliza el modo YAML para las otras opciones",
@@ -23,6 +24,11 @@
             "card_background": "Fondo de tarjeta",
             "prev_next_buttons": "Mostrar botones Anterior/Siguiente",
             "compare_button_type": "Tipo de botón de comparación",
+            "default_period": "Período predeterminado",
+            "billing_cycle_day": "Día de inicio de facturación",
+            "billing_period_label": "Etiqueta de facturación",
+            "start_date_entity": "Entidad de fecha inicial",
+            "end_date_entity": "Entidad de fecha final",
             "custom_period_label": "Etiqueta de período personalizada",
             "compare_button_options": {
                 "icon": "Ícono",
@@ -36,7 +42,8 @@
                 "week": "Semana",
                 "month": "Mes",
                 "year": "Año",
-                "custom": "Personalizado"
+                "custom": "Personalizado",
+                "billing": "Facturación"
             }
         },
         "entity_types": {

@@ -95,9 +95,22 @@ The UI Editor looks like this:
 | compare_button_type      | `string`  | undefined | If set, a button will be added to toggle the compare mode. Supported values are `icon` and `text`. |
 | compare_mode | `string` | `previous` | Comparison mode: `previous` or `yoy`. |
 | collection_key | `string` | undefined | Shared collection key, beginning with `energy_`. |
-| period_buttons | `array` | undefined | If set, only buttons inside this array will be displayed. Supported values are `day`, `week`, `month`, `year` and `custom`. Order of your array will be applied. |
+| period_buttons | `array` | undefined | If set, only buttons inside this array will be displayed. Supported values are `day`, `week`, `month`, `year`, `custom` and `billing` (requires `billing_cycle_day`). Order of your array will be applied. |
 | custom_period_label | `string` | undefined | If set, the label of the custom period button will be changed to this value. Otherwise will be synced to your HA language (If not, consider submitting a PR, adding your language to the localize function.) |
+| default_period | `string` | undefined | Select `day`, `week`, `month`, `year` or `billing` once after the first valid collection update, only if it still shows today as a single day. Existing selections and later user choices are preserved. `billing` requires `billing_cycle_day`. |
+| billing_cycle_day | `integer` | undefined | Start day of each billing period (1–28). Adds a Billing button automatically when `period_buttons` is omitted; with an explicit list, include `billing` to show it. |
+| billing_period_label | `string` | localized | Override the Billing button label, similarly to `custom_period_label`. |
+| start_date_entity | `string` | undefined | Sync the collection start to an `input_datetime.*` entity. Writes are debounced by 500 ms and only changed boundaries are sent. |
+| end_date_entity | `string` | undefined | Sync the collection end to an `input_datetime.*` entity. Date-only helpers receive `date`; helpers with `has_time: true` receive a local `datetime`. Service failures are logged to the browser console. |
 
+Billing periods run from the configured day at local midnight through one millisecond before the same day in the following month. Selecting Billing uses the period containing today. Previous/next move one billing month. Dates use the browser's local time zone.
+
+The card waits for HA's date and toggle components before rendering, with a five-second fallback if loading fails or takes too long. Narrow cards (up to 480 px) wrap labels and controls, including inside desktop dashboards.
+
+### Troubleshooting
+
+- If period buttons are missing after an update, hard-reload the dashboard to clear cached frontend resources (Ctrl+Shift+R, or Cmd+Shift+R on macOS).
+- If you use `energy-flow-card-plus`, check its own documentation and configuration for the `energy_date_selection` option; that card may need its own option enabled to follow the selected range.
 
 ### Example Configurations
 

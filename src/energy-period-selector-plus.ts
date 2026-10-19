@@ -3,7 +3,7 @@ import { html, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators';
 import { HomeAssistant } from './type/home-assistant';
 import { LovelaceCard } from './type/lovelace-card';
-import { EnergyPeriodSelectorPlusConfig } from './energy-period-selector-plus-config';
+import { EnergyPeriodSelectorPlusConfig, validatePeriodConfig } from './energy-period-selector-plus-config';
 import { registerCustomCard } from './utils/register-custom-card';
 import './energy-period-selector-plus-base';
 import { localize } from './localize/localize';
@@ -38,6 +38,7 @@ export class EnergyPeriodSelectorPlus extends LitElement implements LovelaceCard
     if (config.compare_mode !== undefined && !['previous', 'yoy'].includes(config.compare_mode)) {
       throw new Error('compare_mode must be "previous" or "yoy".');
     }
+    validatePeriodConfig(config);
     this._config = config;
   }
 

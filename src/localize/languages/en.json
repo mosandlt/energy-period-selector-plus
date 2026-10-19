@@ -8,7 +8,8 @@
     "loading": "Loading..."
   },
   "toggleButtons": {
-    "custom": "Custom"
+    "custom": "Custom",
+    "billing": "Billing"
   },
   "editor": {
     "yaml_disclaimer": "Please use yaml mode for the other options",
@@ -23,6 +24,11 @@
       "card_background": "Card Background",
       "prev_next_buttons": "Show Previous/Next Buttons",
       "compare_button_type": "Compare Button Type",
+      "default_period": "Default period",
+      "billing_cycle_day": "Billing cycle start day",
+      "billing_period_label": "Billing period label",
+      "start_date_entity": "Start date entity",
+      "end_date_entity": "End date entity",
       "custom_period_label": "Custom Period Label",
       "compare_button_options": {
         "icon": "Icon",
@@ -36,7 +42,8 @@
         "week": "Week",
         "month": "Month",
         "year": "Year",
-        "custom": "Custom"
+        "custom": "Custom",
+        "billing": "Billing"
       }
     },
     "entity_types": {

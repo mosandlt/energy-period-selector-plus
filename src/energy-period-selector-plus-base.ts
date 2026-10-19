@@ -33,6 +33,8 @@ import { SubscribeMixin } from './subscribe-mixin';
 import { HomeAssistant } from './type/home-assistant';
 import { EnergyPeriodSelectorPlusConfig } from './energy-period-selector-plus-config';
 import type { DateRangePickerRanges } from './datetime';
+import { billingPeriodStart, billingPeriodEnd, addBillingPeriods } from './billing-period';
+import { EntitySyncValue, entitySyncPayload } from './entity-sync';
 import { localize } from './localize/localize';
 import { stylesBase } from './style';
 
@@ -43,8 +45,14 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
   @property() public collectionKey?: string;
   @state() _startDate?: Date;
   @state() _endDate?: Date;
-  @state() private _period?: 'day' | 'week' | 'month' | 'year' | 'custom';
+  @state() private _period?: 'day' | 'week' | 'month' | 'year' | 'billing' | 'custom';
   @state() private _compare = false;
+
+  @state() private _componentsReady = false;
+  private _componentsStarted = false;
+  private _defaultPeriodApplied = false;
+  private _entitySyncTimer?: ReturnType<typeof setTimeout>;
+  private _syncedDates: { start?: EntitySyncValue; end?: EntitySyncValue } = {};
 
   private _collection?: EnergyCollectionLike;
   private _energyData?: EnergyDataLike;
@@ -53,14 +61,30 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
   private _subscribedConnection?: HomeAssistant['connection'];
   private _subscribedKey?: string;
 
-  async firstUpdated() {
+  public connectedCallback(): void {
+    super.connectedCallback();
+    if (!this._componentsStarted) {
+      this._componentsStarted = true;
+      void this._loadComponents();
+    }
+  }
+
+  private async _loadComponents(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
+      const helpers = await (window as any).loadCardHelpers?.();
+      await helpers?.importMoreInfoControl?.('input_datetime');
+      await Promise.all(
+        ['ha-date-input', 'ha-icon-button-prev', 'ha-icon-button-next'].map(name => customElements.whenDefined(name)),
+      );
+    };
     try {
-      if (typeof (window as any).loadCardHelpers === 'function') {
-        const helpers = await (window as any).loadCardHelpers();
-        await helpers?.importMoreInfoControl?.('input_datetime');
-      }
+      await Promise.race([load(), new Promise<void>(resolve => { timer = setTimeout(resolve, 5000); })]);
     } catch {
-      // Some HA versions do not expose these optional helpers.
+      // Render anyway if a helper fails, or the components do not become available in time.
+    } finally {
+      clearTimeout(timer);
+      this._componentsReady = true;
     }
     if (!customElements.get('ha-button')) {
       void customElements.whenDefined('ha-button').then(() => this.requestUpdate());
@@ -69,6 +93,10 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
 
   protected updated(changedProps: PropertyValues) {
     super.updated(changedProps);
+    if (changedProps.has('_config') && this._period === 'billing' && this._energyData) {
+      // Reclassify an active billing range if its configured start day changes or is removed.
+      this._updateDates(this._energyData);
+    }
     if (
       this.isConnected &&
       (changedProps.has('hass') || changedProps.has('collectionKey')) &&
@@ -84,6 +112,9 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
     ++this._subscriptionGeneration;
     clearTimeout(this._retryTimer);
     this._retryTimer = undefined;
+    clearTimeout(this._entitySyncTimer);
+    this._entitySyncTimer = undefined;
+    this._syncedDates = {};
     this._collection = undefined;
     this._energyData = undefined;
     this._startDate = undefined;
@@ -122,43 +153,48 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
     ];
   }
 
-  protected render() {
-    if (!this.hass || !findEnergyCollection(this.hass, this.collectionKey) || !this._startDate) {
-      return nothing;
-    }
+  // HA moved this string between versions; use whichever key still resolves.
+  private _todayLabel(): string {
+    return (
+      this.hass.localize('ui.panel.lovelace.components.energy_period_selector.today') ||
+      this.hass.localize('ui.components.date-range-picker.ranges.today') ||
+      this.hass.localize('ui.common.today') ||
+      'Today'
+    );
+  }
 
+  private _getPeriodButtons(): ToggleButton[] {
     const computeToggleButtonLabel = (period: string) => {
+      if (period === 'billing') {
+        return this._config?.billing_period_label || localize('toggleButtons.billing');
+      }
       if (period === 'custom') {
         return this._config?.custom_period_label || localize(`toggleButtons.${period}`) || period;
       }
       return this.hass.localize(`ui.components.calendar.event.rrule.${period}`);
     };
 
-    const periodButtons: ToggleButton[] = !this._config?.period_buttons
-      ? [
-          {
-            label: this.hass.localize('ui.components.calendar.event.rrule.day'),
-            value: 'day',
-          },
-          {
-            label: this.hass.localize('ui.components.calendar.event.rrule.week'),
-            value: 'week',
-          },
-          {
-            label: this.hass.localize('ui.components.calendar.event.rrule.month'),
-            value: 'month',
-          },
-          {
-            label: this.hass.localize('ui.components.calendar.event.rrule.year'),
-            value: 'year',
-          },
-        ]
-      : this._config.period_buttons.map(period => {
-          return {
-            label: computeToggleButtonLabel(period),
-            value: period,
-          };
-        });
+    const periods = this._config?.period_buttons ?? ['day', 'week', 'month', 'year', ...(this._config?.billing_cycle_day ? ['billing'] : [])];
+    return periods
+      .filter(period => period !== 'billing' || this._config?.billing_cycle_day !== undefined)
+      .map(period => ({ label: computeToggleButtonLabel(period), value: period }));
+  }
+
+  protected render() {
+    if (!this._componentsReady || !this.hass || !findEnergyCollection(this.hass, this.collectionKey) || !this._startDate) {
+      return nothing;
+    }
+
+    const periodButtons = this._getPeriodButtons();
+
+    // Own button group instead of ha-button-toggle-group: HA only registers that element lazily (not on every page).
+    const renderPeriodButton = (button: ToggleButton) => {
+      const active = this._period === button.value;
+      const select = () => this._selectPeriod(button.value as EnergyPeriodSelectorBase['_period']);
+      return customElements.get('ha-button')
+        ? html`<ha-button size="s" variant="brand" appearance=${active ? 'filled' : 'plain'} aria-pressed=${active} @click=${select}>${button.label}</ha-button>`
+        : html`<mwc-button dense ?raised=${active} aria-pressed=${active} @click=${select}>${button.label}</mwc-button>`;
+    };
 
     const dateRangePicker = html`
       <div class="date-range-container">
@@ -190,12 +226,12 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
         ? html`<ha-button appearance="outlined" size="s" class=${className} @click=${handler}>${label}</ha-button>`
         : html`<mwc-button dense outlined class=${className} @click=${handler}>${label}</mwc-button>`;
 
-    const todayButtonText = renderButton(this.hass.localize('ui.panel.lovelace.components.energy_period_selector.today'), this._pickToday);
+    const todayButtonText = renderButton(this._todayLabel(), this._pickToday);
 
     const todayButtonIcon = html` <ha-icon-button
       @click=${this._pickToday}
       class="today-icon"
-      .label=${this.hass.localize('ui.panel.lovelace.components.energy_period_selector.today')}
+      .label=${this._todayLabel()}
       .path=${mdiCalendarTodayOutline}
     >
     </ha-icon-button>`;
@@ -232,13 +268,9 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
               </div>
             `}
         <div class="period">
-          <ha-button-toggle-group
-            .buttons=${periodButtons}
-            .active=${this._period}
-            dense
-            @value-changed=${this._handleView}
-            .dir=${computeRTLDirection(this.hass)}
-          ></ha-button-toggle-group>
+          <div class="period-toggle" role="group" style="direction: ${computeRTLDirection(this.hass)}">
+            ${periodButtons.map(button => renderPeriodButton(button))}
+          </div>
           ${this._config?.compare_button_type === 'icon'
             ? html`<ha-icon-button
                 class="compare ${this._compare ? 'active' : ''}"
@@ -278,7 +310,12 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
   }
 
   private _handleView(ev: CustomEvent): void {
-    this._period = ev.detail.value;
+    this._selectPeriod(ev.detail.value);
+  }
+
+  private _selectPeriod(period: EnergyPeriodSelectorBase['_period']): void {
+    if (period === 'billing' && !this._config?.billing_cycle_day) return;
+    this._period = period;
     const today = startOfToday();
     const start =
       !this._startDate ||
@@ -300,6 +337,8 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
         ? startOfMonth(start)
         : this._period === 'year'
         ? startOfYear(start)
+        : this._period === 'billing'
+        ? billingPeriodStart(today, this._config!.billing_cycle_day!)
         : this._startDate || startOfToday(),
       this._period === 'custom' ? this._endDate : undefined,
     );
@@ -315,6 +354,8 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
         ? startOfWeek(new Date(), { weekStartsOn })
         : this._period === 'month'
         ? startOfMonth(new Date())
+        : this._period === 'billing'
+        ? billingPeriodStart(new Date(), this._config!.billing_cycle_day!)
         : startOfYear(new Date()),
     );
   }
@@ -329,6 +370,8 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
         ? addMonths(this._startDate!, -1)
         : this._period === 'year'
         ? addYears(this._startDate!, -1)
+        : this._period === 'billing'
+        ? addBillingPeriods(this._startDate!, -1)
         : addDays(this._startDate!, -1);
     this._setDate(newStart);
   }
@@ -343,6 +386,8 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
         ? addMonths(this._startDate!, 1)
         : this._period === 'year'
         ? addYears(this._startDate!, 1)
+        : this._period === 'billing'
+        ? addBillingPeriods(this._startDate!, 1)
         : addDays(this._startDate!, 1);
     this._setDate(newStart);
   }
@@ -359,6 +404,8 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
         ? endOfMonth(startDate)
         : this._period === 'year'
         ? endOfYear(startDate)
+        : this._period === 'billing'
+        ? billingPeriodEnd(startDate)
         : this._period === 'custom' && customEndDate
         ? endOfDay(customEndDate)
         : this._endDate || endOfToday();
@@ -372,13 +419,18 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
   private _updateDates(energyData: EnergyDataLike): void {
     if (!isValid(energyData.start) || (energyData.end !== undefined && !isValid(energyData.end))) return;
     if (energyData.end && energyData.end < energyData.start) return;
+    const datesChanged = this._startDate?.getTime() !== energyData.start.getTime() ||
+      this._endDate?.getTime() !== (energyData.end || endOfToday()).getTime();
     this._energyData = energyData;
     this._compare = energyData.compareMode ? true : energyData.startCompare !== undefined;
     this._startDate = energyData.start;
     this._endDate = energyData.end || endOfToday();
     const dayDifference = differenceInDays(this._endDate, this._startDate || endOfToday());
     this._period =
-      this._period !== 'custom'
+      this._period === 'billing' && this._startDate.getDate() === this._config?.billing_cycle_day &&
+        this._endDate!.getTime() === billingPeriodEnd(this._startDate).getTime()
+        ? 'billing'
+        : this._period !== 'custom'
         ? dayDifference < 1
           ? 'day'
           : dayDifference === 6
@@ -389,6 +441,42 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
           ? 'year'
           : 'custom'
         : 'custom';
+    if (!this._defaultPeriodApplied) {
+      // Set before setPeriod: collection subscriptions may notify synchronously.
+      this._defaultPeriodApplied = true;
+      if (this._config?.default_period && this._config.default_period !== 'day' && this._period === 'day' && this._startDate.getTime() === startOfToday().getTime()) {
+        this._selectPeriod(this._config.default_period);
+        return;
+      }
+    }
+    if (datesChanged) this._scheduleEntitySync();
+  }
+
+  private _scheduleEntitySync(): void {
+    clearTimeout(this._entitySyncTimer);
+    this._entitySyncTimer = setTimeout(() => {
+      this._entitySyncTimer = undefined;
+      for (const boundary of ['start', 'end'] as const) {
+        const entityId = this._config?.[boundary === 'start' ? 'start_date_entity' : 'end_date_entity'];
+        const date = boundary === 'start' ? this._startDate : this._endDate;
+        if (!entityId || !date) continue;
+        const value: EntitySyncValue = {
+          entityId,
+          timestamp: date.getTime(),
+          hasTime: this.hass.states[entityId]?.attributes.has_time === true,
+        };
+        const payload = entitySyncPayload(value, this._syncedDates[boundary]);
+        if (!payload) continue;
+        // Record the attempted change before invoking HA; failures warn without a retry loop.
+        this._syncedDates[boundary] = value;
+        try {
+          void Promise.resolve(this.hass.callService('input_datetime', 'set_datetime', payload))
+            .catch(error => console.warn('Energy Period Selector Plus: entity sync failed', error));
+        } catch (error) {
+          console.warn('Energy Period Selector Plus: entity sync failed', error);
+        }
+      }
+    }, 500);
   }
 
   private _toggleCompare() {

@@ -8,7 +8,8 @@
         "loading": "A carregar..."
     },
     "toggleButtons": {
-        "custom": "Personalizado"
+        "custom": "Personalizado",
+        "billing": "Faturação"
     },
     "editor": {
         "yaml_disclaimer": "Por favor, utilize o modo yaml para as outras opções",
@@ -23,6 +24,11 @@
             "card_background": "Fundo do cartão",
             "prev_next_buttons": "Mostrar Botões de controle",
             "compare_button_type": "Tipo de Botão para Comparar",
+            "default_period": "Período predefinido",
+            "billing_cycle_day": "Dia de início da faturação",
+            "billing_period_label": "Rótulo da faturação",
+            "start_date_entity": "Entidade da data inicial",
+            "end_date_entity": "Entidade da data final",
             "custom_period_label": "Rótulo do Período Personalizado",
             "compare_button_options": {
                 "icon": "Ícone",
@@ -36,7 +42,8 @@
                 "week": "Semana",
                 "month": "Mês",
                 "year": "Ano",
-                "custom": "Personalizado"
+                "custom": "Personalizado",
+                "billing": "Faturação"
             }
         },
         "entity_types": {

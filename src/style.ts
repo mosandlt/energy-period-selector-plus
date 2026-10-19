@@ -10,6 +10,37 @@ export const styles = css`
   }
 `;
 
+const mobileStyles = css`
+  .row,
+  .period,
+  .label {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+  .label {
+    overflow-wrap: anywhere;
+  }
+  .period {
+    margin-left: 0;
+  }
+  .period-toggle {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+  }
+  .date-range-container {
+    width: auto;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+  ha-date-input {
+    min-width: 0;
+    max-width: 100%;
+  }
+`;
+
 export const stylesBase = css`
   .date-range-container {
     box-sizing: border-box;
@@ -77,6 +108,8 @@ export const stylesBase = css`
     position: relative;
   }
   :host {
+    display: block;
+    container-type: inline-size;
     --mdc-button-outline-color: currentColor;
     --primary-color: currentColor;
     --mdc-theme-primary: currentColor;
@@ -88,8 +121,20 @@ export const stylesBase = css`
   ha-icon-button:not(.today-icon) {
     --mdc-icon-button-size: 28px;
   }
-  ha-button-toggle-group {
-    direction: var(--direction);
+  @media (max-width: 480px) {
+    ${mobileStyles}
+  }
+  @container (max-width: 480px) {
+    ${mobileStyles}
+  }
+  .period-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .period-toggle ha-button,
+  .period-toggle mwc-button {
+    margin-left: 0;
   }
   ha-button,
   mwc-button {
