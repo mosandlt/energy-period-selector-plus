@@ -187,7 +187,7 @@ export class EnergyPeriodSelectorBase extends SubscribeMixin(LitElement) {
 
     const renderButton = (label: string, handler: () => void, className = '') =>
       customElements.get('ha-button')
-        ? html`<ha-button appearance="outlined" size="small" class=${className} @click=${handler}>${label}</ha-button>`
+        ? html`<ha-button appearance="outlined" size="s" class=${className} @click=${handler}>${label}</ha-button>`
         : html`<mwc-button dense outlined class=${className} @click=${handler}>${label}</mwc-button>`;
 
     const todayButtonText = renderButton(this.hass.localize('ui.panel.lovelace.components.energy_period_selector.today'), this._pickToday);
